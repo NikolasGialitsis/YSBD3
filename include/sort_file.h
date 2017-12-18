@@ -18,9 +18,16 @@ typedef struct Record {
 
 
 
-SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,BF_Block*buffer);
+SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,int tempDesc);
+
+SR_ErrorCode printBuffer(int bufferSize,int tempDesc);
+
+int Partition(int bufferSize,int tempDesc,int start,int end) ;
+
+char* getRecord(int fileDesc,int record_num);
 
 
+void QuickSort(int bufferSize,int tempDesc,int start,int end);
 
 /*
  * Η συνάρτηση SR_Init χρησιμοποιείται για την αρχικοποίηση του sort_file.

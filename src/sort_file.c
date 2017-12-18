@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "bf.h"
+#include <unistd.h>
+#include <errno.h>
+
 
 #define CALL_OR_DIE(call)     \
   {                           \
@@ -206,40 +209,57 @@ SR_ErrorCode SR_InsertEntry(int fileDesc,	Record record) {
 
 
 
-SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,BF_Block*buffer){
+SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,int tempDesc){
   
   int start_block = step_num*bufferSize;
-  memset(buffer,0,bufferSize*BF_BLOCK_SIZE);
-  BF_Block* block;
-  BF_Block_Init(&block);
+  BF_Block* source_block;
+  BF_Block_Init(&source_block);
+
+  BF_Block* dest_block;
+  BF_Block_Init(&dest_block);
   int i;
   char* source;
   char* dest;
+  int block_num;
+  CALL_OR_DIE(BF_GetBlockCounter(fileDesc,&block_num));
+  printf("block_num = %d\n",block_num );
+  block_num-=1;
 
   int buffer_pos = 0;
   for( i = start_block ; i < start_block+bufferSize ;i++){
-    CALL_OR_DIE(BF_GetBlock(fileDesc,i,block));
-    source = BF_Block_GetData(block);
+    if(i > block_num)break;
+    printf("i = %d\n",i );
+    CALL_OR_DIE(BF_GetBlock(fileDesc,i,source_block));
+    source = BF_Block_GetData(source_block);
 
-    dest = BF_Block_GetData(buffer+buffer_pos);
-     
+    CALL_OR_DIE(BF_GetBlock(tempDesc,buffer_pos,dest_block));
+    dest = BF_Block_GetData(dest_block);
     memcpy(dest,source,BF_BLOCK_SIZE);
     buffer_pos+=1;
+
+    BF_Block_SetDirty(dest_block);
+    CALL_OR_DIE(BF_UnpinBlock(source_block));
+    CALL_OR_DIE(BF_UnpinBlock(dest_block));
   }
 
-  CALL_OR_DIE(BF_UnpinBlock(block));
-  BF_Block_Destroy(&block);
+
+  BF_Block_Destroy(&source_block);
+  BF_Block_Destroy(&dest_block);
 }
 
 
 
-SR_ErrorCode printBuffer(int bufferSize,BF_Block* buffer){
-  printf("----- Print Buffer -----");
+SR_ErrorCode printBuffer(int bufferSize,int tempDesc){
+  printf("----- Print Buffer -----\n");
   int i;
   int record_num;
   char* data;
+  BF_Block* block;
+  BF_Block_Init(&block);
   for( i = 0 ; i < bufferSize ; i++){
-    data = BF_Block_GetData(buffer+i);
+
+    CALL_OR_DIE(BF_GetBlock(tempDesc,i,block));
+    data = BF_Block_GetData(block);
     record_num = 0;
     memcpy(&record_num,data,sizeof(int));//read block's number of records
     int j = 0;
@@ -247,11 +267,13 @@ SR_ErrorCode printBuffer(int bufferSize,BF_Block* buffer){
     for(j = 0 ; j < record_num; j++){ //read each record in block
       Record record;
       memset(&record,0,sizeof(Record));
-      memcpy(&record,buffer,sizeof(Record));
+      memcpy(&record,charbuf,sizeof(Record));
       printf("%d,\"%s\",\"%s\",\"%s\"\n",
         record.id, record.name, record.surname, record.city);
       charbuf += sizeof(Record);
+   
     }
+
     printf("\n\n");
   }
 }
@@ -261,7 +283,107 @@ SR_ErrorCode printBuffer(int bufferSize,BF_Block* buffer){
 
 
 
+void QuickSort(int bufferSize,int tempDesc,int start,int end) {
+  int pIndex; 
+  if(start<end) { 
+    pIndex=Partition(bufferSize,tempDesc,start,end);//first iteration:start=  0 , end = buffersize*record
+    QuickSort(bufferSize,tempDesc,start,pIndex-1);
+    QuickSort(bufferSize,tempDesc,pIndex+1,end); 
+  } 
+} 
 
+
+
+char* getRecord(int fileDesc,int record_num){
+  int target_block;
+  int bl_rec_capacity;
+  char* data;
+  int offset ;
+  BF_Block* block = NULL;
+  BF_Block_Init(&block);
+
+
+  bl_rec_capacity = BF_BLOCK_SIZE/sizeof(Record);
+
+
+  target_block = record_num/bl_rec_capacity;
+  offset = record_num%bl_rec_capacity;
+
+  printf("record_num = %d\n",record_num );
+  printf("bl_rec_capacity = %d\n",bl_rec_capacity );
+  printf("target_block %d\n",target_block );
+
+
+  CALL_OR_DIE(BF_GetBlock(fileDesc,target_block,block));
+  data = BF_Block_GetData(block);
+  data+=sizeof(int);
+
+  printf("offset = %d\n\n",offset );
+  BF_UnpinBlock(block);
+  BF_Block_Destroy(&block);
+  
+  return data+(offset*sizeof(Record));
+}
+
+
+int Partition(int bufferSize,int tempDesc,int start,int end) {
+  printf("partition : %d -> %d\n",start,end );
+  int i,pIndex;
+ 
+  char temp[sizeof(Record)];
+  memset(temp,0,sizeof(Record));
+
+  char temp2[sizeof(Record)];
+  memset(temp,0,sizeof(Record));
+
+  char* data;
+  char *pivot;
+  char *record_data;
+  char* endData;
+  char* pIndexData;
+
+  pivot = getRecord(tempDesc,end);
+  
+  Record precord;
+
+  memset(&precord,0,sizeof(Record));
+  memcpy(&precord,pivot,sizeof(Record));
+  printf("PIVOT (%d->%d) %d,\"%s\",\"%s\",\"%s\"\n\n",
+  start,end,precord.id, precord.name, precord.surname, precord.city);
+
+  pIndex=start;
+  for(i=start;i<end;i++) {
+  
+    record_data = getRecord(tempDesc,i); 
+    Record record;
+    memset(&record,0,sizeof(Record));
+    memcpy(&record,record_data,sizeof(Record));
+  
+    //printf("%d,\"%s\",\"%s\",\"%s\"\n",
+      //record.id, record.name, record.surname, record.city);
+  
+
+   if(strcmp(record.name,precord.name)<0) {
+      memcpy(temp,record_data,sizeof(Record));
+
+      pIndexData = getRecord(tempDesc,pIndex);
+      memcpy(record_data,pIndexData,sizeof(Record));
+      
+      memcpy(pIndexData,temp,sizeof(Record));
+    
+      pIndex=pIndex+1; 
+   }
+  }
+
+
+  memcpy(temp2,pIndexData,sizeof(Record));
+
+  endData = getRecord(tempDesc,end);
+  
+  memcpy(pIndexData,endData,sizeof(Record));
+  memcpy(endData,temp2,sizeof(Record));
+  return pIndex; 
+}
 
 
 /*
@@ -286,16 +408,14 @@ SR_ErrorCode printBuffer(int bufferSize,BF_Block* buffer){
  */
 
 
-
 SR_ErrorCode SR_SortedFile(
   const char* input_filename,
   const char* output_filename,
   int fieldNo,
   int bufferSize
 ) {
-
-
   // Your code goes here
+
 
 
   if((bufferSize > BF_BUFFER_SIZE) || (bufferSize < 3)){
@@ -304,63 +424,91 @@ SR_ErrorCode SR_SortedFile(
   }
 
   int i,j,k,m,p,b;
+  errno = 0;
+  access("temp",F_OK);
 
-  //Init Buffer
+  int file_exists=0;
+  if(errno == ENOENT){
+    CALL_OR_DIE(BF_CreateFile("temp"));
+  }
+  else if(errno!=0){
+    fprintf(stderr, "Error accessing \"temp\" file\n");
+  }
+  else file_exists=1;
 
 
+  int tempDesc;
+  CALL_OR_DIE(BF_OpenFile("temp",&tempDesc));
 
 
-  BF_Block* buffer = calloc(bufferSize,BF_BLOCK_SIZE);
-  int(i = 0 ; i < bufferSize ; i++){
-    BF_Block* block = NULL;
-    BF_Block_Init(&block);
-    CALL_OR_DIE(BF_AllocateBlock(fileDesc,block));
+  /*Allocate buffer's blocks in temp file*/
+  
+  
+  int buffer_length;
+  if(file_exists == 0){
+    for(i = 0 ; i < bufferSize ; i++){
+      BF_Block* block = NULL;
+      BF_Block_Init(&block);
+      CALL_OR_DIE(BF_AllocateBlock(tempDesc,block));
+  
+      BF_UnpinBlock(block);
+      BF_Block_Destroy(&block);
+    } 
+    CALL_OR_DIE(BF_GetBlockCounter(tempDesc,&buffer_length));
+    if(buffer_length!=bufferSize){
+      fprintf(stderr, "invalid buffer_length = %d\n",buffer_length);
+    }
+
   }
 
-  i=0;
-
-  if(buffer == NULL){
-    fprintf(stderr,"Heap is full\n");
-    return SR_ERROR;
-  }
 
 
-
+  
+  
 
 
   /*Fasi 1 : Quicksort! */
 
 
-  int fileDesc;
-  CALL_OR_DIE(SR_OpenFile(input_filename,&fileDesc));
+  int inputDesc;
+  int outputDesc;
+
+  CALL_OR_DIE(SR_OpenFile(input_filename,&inputDesc));
+
+  CALL_OR_DIE(SR_OpenFile(input_filename,&outputDesc));
   BF_Block* block;
   BF_Block_Init(&block);
-  CALL_OR_DIE(BF_GetBlockCounter(fileDesc,&b));
-  b-=1;
+
+
+
+  int block_num;
+
+
+  CALL_OR_DIE(BF_GetBlockCounter(inputDesc,&block_num));
+  block_num-=1;
 
   i = 1;
-  j = b;//o arithmos twn sunolikwn block me tis eggrafes
+  j = block_num;//o arithmos twn sunolikwn block me tis eggrafes
   k = bufferSize;
   m = j/k; //arithmos upoomadwn pou tha sximatistoun meta to 1o vima
   if(j%k > 0)m++;
 
-
-  CALL_OR_DIE(BF_CreateFile("temp"));
-  int tempDesc;
-  CALL_OR_DIE(BF_OpenFile("temp",&tempDesc));
-
-
-
-
-
   //quicksort
+
+
+  int end;
+  end = bufferSize*(BF_BLOCK_SIZE/sizeof(Record));
+  printf("buffersize = %d\n",bufferSize);
+   printBuffer(bufferSize,tempDesc);
   while(i <= m){
-    getNextBlocks(i,bufferSize,fileDesc,buffer);//metaferei k blocks apo to offset k*i ston buffer 
-    printBuffer(bufferSize,buffer);
-    //stin getNextBlocks na ginetai memset 0 prin tin metafora gia kathe omada
-    //Quicksort(k,buffer,tempFile);
+    getNextBlocks(i,bufferSize,inputDesc,tempDesc);//metaferei k blocks apo to offset k*i ston buffer 
+    //printBuffer(bufferSize,tempDesc);
+    printf("%d \n",i );
+    QuickSort(bufferSize,tempDesc,0,(bufferSize*(BF_BLOCK_SIZE/sizeof(Record))) -1);
+    break;
     i+=1;
   }
+   printBuffer(bufferSize,tempDesc);
 
 /*
 
@@ -390,11 +538,8 @@ SR_ErrorCode SR_SortedFile(
   */
 
 
-
-
-
-  free(buffer);
   BF_CloseFile(tempDesc);
+  BF_CloseFile(outputDesc);
   return SR_OK;
 }
 
