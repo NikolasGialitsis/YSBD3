@@ -65,7 +65,9 @@ SR_ErrorCode SR_Init() {
     }
 
   }
+
   printf("\n\n");
+  fflush(stdout);
   return SR_OK;
 }
 
@@ -568,8 +570,6 @@ SR_ErrorCode SR_SortedFile(
   errno = 0;
   access("temp",F_OK); 
 
-
-
   int file_exists=0;
   if(errno == ENOENT){
     CALL_OR_DIE(BF_CreateFile("temp"));
@@ -583,10 +583,13 @@ SR_ErrorCode SR_SortedFile(
       fprintf(stderr, "Fork error\n" );
       exit(-1);
     }
-    else if(pid > 0){
+    else if(pid == 0){
       execlp("rm","rm","temp",(void*)NULL);
       printf("Unexpected return from exec: error rm\n");
       exit(-1);
+    }
+    else{
+      while(wait(NULL) < 0);
     }
 
     CALL_OR_DIE(BF_CreateFile("temp"));
@@ -606,6 +609,8 @@ SR_ErrorCode SR_SortedFile(
     BF_Block* block = NULL;
     BF_Block_Init(&block);
     CALL_OR_DIE(BF_AllocateBlock(tempDesc,block));
+    char* data = BF_Block_GetData(block);
+    memset(data,0,BF_BLOCK_SIZE);
 
     BF_UnpinBlock(block);
     BF_Block_Destroy(&block);
@@ -737,6 +742,7 @@ SR_ErrorCode SR_SortedFile(
   BF_Block_Destroy(&block);
   SR_CloseFile(tempDesc);
   SR_CloseFile(outputDesc);
+  SR_CloseFile(inputDesc);
   return SR_OK;
 }
 
