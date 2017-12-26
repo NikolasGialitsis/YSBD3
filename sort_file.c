@@ -1,10 +1,11 @@
 #include "sort_file.h"
 #include <stdio.h>
+#include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
 #include "bf.h"
 #include <unistd.h>
-#include <sys/types.h>
+#include <wait.h>
 #include <errno.h>
 
 
@@ -24,7 +25,47 @@
  */
 SR_ErrorCode SR_Init() {
   // Your code goes here
+  printf("Initialize SR: Remove all sorted files from previous runs\n");
+  pid_t pid;
+  char SortedFiles[3][20];
+  memset(SortedFiles,0,3*20*sizeof(char));
+  memcpy(SortedFiles[0],"sorted_name.db\0",strlen("sorted_name.db")+1);
+  memcpy(SortedFiles[1],"sorted_surname.db\0",strlen("sorted_surname.db")+1);
+  memcpy(SortedFiles[2],"sorted_id.db\0",strlen("sorted_id.db")+1);
 
+  int i = 0;
+  int status;
+  for(i = 0 ; i < 3 ; i++){
+    printf("\taccess %s\n",SortedFiles[i] );
+    fflush(stdout);
+    errno = 0;
+    access(SortedFiles[i],F_OK); 
+    if(errno == ENOENT)continue;
+    pid = fork();
+  
+    if(pid < 0){
+      fprintf(stderr, "Fork error\n" );
+      exit(-1);
+    }
+    else if(pid == 0){
+      printf("\t\t\tI am child process pid = %d , parent = %d\n",getpid(),getppid() );
+      fflush(stdout);
+      printf("\t\t\tremoving %s\n",SortedFiles[i]);
+      fflush(stdout);
+      execlp("rm","rm",SortedFiles[i],(void*)NULL);
+      
+      printf("Unexpected return from exec: error rm\n");
+      fflush(stdout);
+      exit(-1);
+    }
+    else{
+      printf("\t\tI am parent process pid = %d \n",getpid());
+      fflush(stdout);
+      while(wait(NULL) < 0);
+    }
+
+  }
+  printf("\n\n");
   return SR_OK;
 }
 
@@ -176,7 +217,7 @@ SR_ErrorCode SR_InsertEntry(int fileDesc,	Record record) {
 
     
     //if (existing blocks can not store another record )
-    if(((record_num+1)*sizeof(Record) + sizeof(char)) >= BF_BLOCK_SIZE){
+    if(((record_num+1)*sizeof(Record) + sizeof(int)) >= BF_BLOCK_SIZE){
       
       //Unpin previous block
       CALL_OR_DIE(BF_UnpinBlock(block));
@@ -240,17 +281,11 @@ SR_ErrorCode writeBuffer(int bufferSize,int tempDesc,int outputDesc){
       Record record;
       memset(&record,0,sizeof(Record));
       memcpy(&record,charbuf,sizeof(Record));
-      /*offset = lseek(tempDesc,0,SEEK_END);
 
-      if(offset < 0 ){
-        fprintf(stderr, "error seeking fd = %d (errno = %d)\n",tempDesc,errno );
-        exit(-1);
+      if(strcmp(record.name,"") != 0){
+        printf("%d,\"%s\",\"%s\",\"%s\"\n",
+        record.id, record.name, record.surname, record.city);
       }
-      ret = 0;*/
-
-      printf("%d,\"%s\",\"%s\",\"%s\"\n",
-      record.id, record.name, record.surname, record.city);
-      
       SR_InsertEntry(outputDesc,record);
       charbuf += sizeof(Record);
    
@@ -285,18 +320,19 @@ SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,int tempDesc
   for( i = start_block ; i < start_block+bufferSize ;i++){
     if(i > block_num){
       int k;
+      //printf("%d > %d\n",i,block_num );
       for(k = buffer_pos ; k < bufferSize ;k++){
         CALL_OR_DIE(BF_GetBlock(tempDesc,k,dest_block));
         dest = BF_Block_GetData(dest_block);
         memset(dest,0,BF_BLOCK_SIZE);
-        printf("set Buffer[%d] -->0 \n",k);
+        //printf("set Buffer[%d] -->0 \n",k);
         BF_Block_SetDirty(dest_block);
         CALL_OR_DIE(BF_UnpinBlock(dest_block));
       }
       break;
     }
-
     CALL_OR_DIE(BF_GetBlock(fileDesc,i,source_block));
+
     source = BF_Block_GetData(source_block);
     record_num = 0;
     memcpy(&record_num,source,sizeof(int));
@@ -361,12 +397,12 @@ SR_ErrorCode printBuffer(int bufferSize,int tempDesc){
 
 
 
-void QuickSort(int bufferSize,int tempDesc,int start,int end) {
+void QuickSort(int bufferSize,int tempDesc,int start,int end,int fieldNo) {
   int pIndex; 
   if(start<end) { 
-    pIndex=Partition(bufferSize,tempDesc,start,end);//first iteration:start=  0 , end = buffersize*record
-    QuickSort(bufferSize,tempDesc,start,pIndex-1);
-    QuickSort(bufferSize,tempDesc,pIndex+1,end); 
+    pIndex=Partition(bufferSize,tempDesc,start,end,fieldNo);//first iteration:start=  0 , end = buffersize*record
+    QuickSort(bufferSize,tempDesc,start,pIndex-1,fieldNo);
+    QuickSort(bufferSize,tempDesc,pIndex+1,end,fieldNo); 
   } 
   
 } 
@@ -398,8 +434,34 @@ char* getRecord(int fileDesc,int record_num){
   return data+(offset*sizeof(Record));
 }
 
+/*Function compare:
+  //returns 0 if currec[field] == pivot[field] 
+  //returns < 0 if currec[field] < pivot[field]
+  //returns > 0 if currec[field] > pivot[field]
+*/
+int compare(Record* currec ,Record* pivot,int fieldNo){
+  
+  if (fieldNo == 0){
+    if((currec->id) == (pivot->id) ) return 0;
+    else if ((currec->id)>(pivot->id)) return 1;
+    else return -1;
+  }
+  else if 
+    (fieldNo == 1 )return strcmp(currec->name,pivot->name);
+  else if 
+    (fieldNo == 2 )return strcmp(currec->surname,pivot->surname);
+  else if 
+    (fieldNo == 3 )return strcmp(currec->city,pivot->city);
+  else{
+    fprintf(stderr, "Compare:Error invalid field %d\n",fieldNo );
+    exit(-fieldNo);
+  }
 
-int Partition(int bufferSize,int tempDesc,int start,int end) {
+
+
+}
+
+int Partition(int bufferSize,int tempDesc,int start,int end,int fieldNo) {
   //printf("partition : %d -> %d\n",start,end );
   int i,pIndex;
  
@@ -421,9 +483,6 @@ int Partition(int bufferSize,int tempDesc,int start,int end) {
 
   memset(&precord,0,sizeof(Record));
   memcpy(&precord,pivot,sizeof(Record));
-  //printf("PIVOT (%d->%d) %d,\"%s\",\"%s\",\"%s\"\n\n",
- // start,end,precord.id, precord.name, precord.surname, precord.city);
-
   pIndex=start;
   for(i=start;i<end;i++) {
   
@@ -431,13 +490,8 @@ int Partition(int bufferSize,int tempDesc,int start,int end) {
     Record record;
     memset(&record,0,sizeof(Record));
     memcpy(&record,record_data,sizeof(Record));
-  
-  //  printf("\t%d,\"%s\",\"%s\",\"%s\"\n",
-    //  record.id, record.name, record.surname, record.city);
-  
-//if ( strcmp(record.name,precord.name) < 0 ){
-   if(record.id < precord.id) {
 
+if (compare(&record,&precord,fieldNo) < 0 ){
       if(pIndex != i){
           memset(temp,0,sizeof(Record));
           memcpy(temp,record_data,sizeof(Record));
@@ -508,10 +562,13 @@ SR_ErrorCode SR_SortedFile(
     fprintf(stderr, "invalid input buffer size :%d\n",bufferSize );
     return SR_ERROR;
   }
+  printf("\n");
 
   int i,j,k,m,p,b;
   errno = 0;
-  access("temp",F_OK);
+  access("temp",F_OK); 
+
+
 
   int file_exists=0;
   if(errno == ENOENT){
@@ -520,33 +577,45 @@ SR_ErrorCode SR_SortedFile(
   else if(errno!=0){
     fprintf(stderr, "Error accessing \"temp\" file\n");
   }
-  else file_exists=1;
+  else {
+    pid_t pid = fork();
+    if(pid < 0){
+      fprintf(stderr, "Fork error\n" );
+      exit(-1);
+    }
+    else if(pid > 0){
+      execlp("rm","rm","temp",(void*)NULL);
+      printf("Unexpected return from exec: error rm\n");
+      exit(-1);
+    }
 
+    CALL_OR_DIE(BF_CreateFile("temp"));
+}
 
+  
   int tempDesc;
   CALL_OR_DIE(BF_OpenFile("temp",&tempDesc));
-  printf("\ntempDesc = %d\n",tempDesc );
 
 
   /*Allocate buffer's blocks in temp file*/
   
   
   int buffer_length;
-  if(file_exists == 0){
-    for(i = 0 ; i < bufferSize ; i++){
-      BF_Block* block = NULL;
-      BF_Block_Init(&block);
-      CALL_OR_DIE(BF_AllocateBlock(tempDesc,block));
-  
-      BF_UnpinBlock(block);
-      BF_Block_Destroy(&block);
-    } 
-    CALL_OR_DIE(BF_GetBlockCounter(tempDesc,&buffer_length));
-    if(buffer_length!=bufferSize){
-      fprintf(stderr, "invalid buffer_length = %d\n",buffer_length);
-    }
 
+  for(i = 0 ; i < bufferSize ; i++){
+    BF_Block* block = NULL;
+    BF_Block_Init(&block);
+    CALL_OR_DIE(BF_AllocateBlock(tempDesc,block));
+
+    BF_UnpinBlock(block);
+    BF_Block_Destroy(&block);
+  } 
+  CALL_OR_DIE(BF_GetBlockCounter(tempDesc,&buffer_length));
+  if(buffer_length!=bufferSize){
+    fprintf(stderr, "invalid buffer_length = %d\n",buffer_length);
   }
+
+
 
   /*Fasi 1 : Quicksort! */
 
@@ -584,14 +653,13 @@ SR_ErrorCode SR_SortedFile(
 
 
   int block_num;
-
   CALL_OR_DIE(BF_GetBlockCounter(inputDesc,&block_num));
   block_num-=1;
 
   i = 1;
   j = block_num;//o arithmos twn sunolikwn block me tis eggrafes
   k = bufferSize;
-  m = j/k + 1; //arithmos upoomadwn pou tha sximatistoun meta to 1o vima
+  m = j/k; //arithmos upoomadwn pou tha sximatistoun meta to 1o vima
   if(j%k > 0)m++;
 
 
@@ -605,9 +673,7 @@ SR_ErrorCode SR_SortedFile(
   char* data;
 
   while(i <= m){
-  
     getNextBlocks(i,bufferSize,inputDesc,tempDesc);//metaferei k blocks apo to offset k*i ston buffer 
-  
     int k=0;  
     for(k = 0 ; k < bufferSize ;k++){
       int numofrec=0;
@@ -627,7 +693,7 @@ SR_ErrorCode SR_SortedFile(
               + last_bl_rec//last records(last block may not be full)
               - 1; //because indexing starts from 0
 
-    QuickSort(bufferSize,tempDesc,0,last_rec_id);
+    QuickSort(bufferSize,tempDesc,0,last_rec_id,fieldNo);
     writeBuffer(bufferSize,tempDesc,outputDesc);
     //printBuffer(bufferSize,tempDesc);
   

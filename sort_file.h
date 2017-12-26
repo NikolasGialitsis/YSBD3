@@ -21,12 +21,12 @@ SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,int tempDesc
 SR_ErrorCode writeBuffer(int bufferSize,int tempDesc,int OutputDesc);
 SR_ErrorCode printBuffer(int bufferSize,int tempDesc);
 
-int Partition(int bufferSize,int tempDesc,int start,int end) ;
+int Partition(int bufferSize,int tempDesc,int start,int end,int fieldNo) ;
 
 char* getRecord(int fileDesc,int record_num);
 
 
-void QuickSort(int bufferSize,int tempDesc,int start,int end);
+void QuickSort(int bufferSize,int tempDesc,int start,int end,int fieldNo);
 
 /*
  * Η συνάρτηση SR_Init χρησιμοποιείται για την αρχικοποίηση του sort_file.
