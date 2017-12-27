@@ -7,7 +7,6 @@
 #include <unistd.h>
 #include <wait.h>
 #include <errno.h>
-#include <math.h>
 
 #define CALL_OR_DIE(call)     \
   {                           \
