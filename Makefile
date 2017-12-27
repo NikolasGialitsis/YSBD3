@@ -13,6 +13,7 @@ sr_main3:
 	gcc -lm -I ./include/ -L ./lib/ -Wl,-rpath,./lib/ ./examples/sr_main3.c ./src/sort_file.c -lbf -o ./build/sr_main3 -O2
 
 
+
 bf:
 	@echo " Compile bf_main ...";
 	gcc -I ./include/ -L ./lib/ -Wl,-rpath,./lib/ ./examples/bf_main.c -lbf -o ./build/runner -O2

@@ -17,6 +17,8 @@ typedef struct Record {
 } Record;
 
 
+
+
 SR_ErrorCode Merge(int bufferSize, int tempDesc,int outputDesc, int fieldNo);
 SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,int tempDesc);
 SR_ErrorCode writeBuffer(int bufferSize,int tempDesc,int OutputDesc);
