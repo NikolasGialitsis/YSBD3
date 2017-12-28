@@ -184,7 +184,7 @@ SR_ErrorCode SR_CloseFile(int fileDesc) {
  * τρέχουσα τελευταία εγγραφή. Σε περίπτωση που εκτελεστεί επιτυχώς,
  * επιστρέφεται SR_OK, ενώ σε διαφορετική περίπτωση κάποιος κωδικός λάθους.
  */
-SR_ErrorCode SR_InsertEntry(int fileDesc,	Record record) {
+SR_ErrorCode SR_InsertEntry(int fileDesc, Record record) {
   // Your code goes here
   BF_Block* block = NULL;
   char* data = NULL;
@@ -370,14 +370,14 @@ SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,int tempDesc
 
 
 SR_ErrorCode printBuffer(int bufferSize,int tempDesc){
-  printf("\n----- Print Buffer -----\n");
+  //printf("\n----- Print Buffer -----\n");
   int i;
   int record_num;
   char* data;
   BF_Block* block;
   BF_Block_Init(&block);
   for( i = 0 ; i < bufferSize ; i++){
-    printf("\tBuffer[%d]:\n",i );
+    //printf("\tBuffer[%d]:\n",i );
     CALL_OR_DIE(BF_GetBlock(tempDesc,i,block));
 
     data = BF_Block_GetData(block);
@@ -398,7 +398,7 @@ SR_ErrorCode printBuffer(int bufferSize,int tempDesc){
       charbuf += sizeof(Record);
    
     }
-    printf("\n");
+   // printf("\n");
   }
   BF_Block_Destroy(&block);
 }
@@ -410,11 +410,19 @@ SR_ErrorCode printBuffer(int bufferSize,int tempDesc){
 
 void QuickSort(int bufferSize,int tempDesc,int start,int end,int fieldNo) {
   int pIndex; 
+//  printf("before %d -> %d\n",start,end);
+ // printBuffer(bufferSize,tempDesc);
   if(start<end) { 
+
+
     pIndex=Partition(bufferSize,tempDesc,start,end,fieldNo);//first iteration:start=  0 , end = buffersize*record
+ //   printf("after %d -> %d\n",start,end);
+ //   printBuffer(bufferSize,tempDesc);
+
     QuickSort(bufferSize,tempDesc,start,pIndex-1,fieldNo);
     QuickSort(bufferSize,tempDesc,pIndex+1,end,fieldNo); 
   } 
+
   
 } 
 
@@ -429,16 +437,20 @@ char* getRecord(int fileDesc,int record_num){
   BF_Block_Init(&block);
 
 
-  bl_rec_capacity = BF_BLOCK_SIZE/sizeof(Record);
+  bl_rec_capacity = (BF_BLOCK_SIZE-sizeof(int))/sizeof(Record);
+  
 
-
-  target_block = record_num/bl_rec_capacity;
-  offset = record_num%bl_rec_capacity;
+  target_block = record_num/(bl_rec_capacity-1);
+ 
 
   CALL_OR_DIE(BF_GetBlock(fileDesc,target_block,block));
   data = BF_Block_GetData(block);
   data+=sizeof(int);
 
+  //printf("target_block = %d\n",target_block );
+
+  offset = record_num%(bl_rec_capacity-1)  ;
+ // printf("offset = %d\n",offset );
   BF_UnpinBlock(block);
   BF_Block_Destroy(&block);
   
@@ -473,7 +485,8 @@ int compare(Record* currec ,Record* pivot,int fieldNo){
 }
 
 int Partition(int bufferSize,int tempDesc,int start,int end,int fieldNo) {
-  //printf("partition : %d -> %d\n",start,end );
+  //printf("\n\npartition : %d -> %d\n",start,end );
+  
   int i,pIndex;
  
   char temp[sizeof(Record)];
@@ -495,26 +508,34 @@ int Partition(int bufferSize,int tempDesc,int start,int end,int fieldNo) {
   memset(&precord,0,sizeof(Record));
   memcpy(&precord,pivot,sizeof(Record));
   pIndex=start;
+  //printf("pivot = %d,%s\n",precord.id,precord.name );
   for(i=start;i<end;i++) {
   
     record_data = getRecord(tempDesc,i); 
     Record record;
     memset(&record,0,sizeof(Record));
     memcpy(&record,record_data,sizeof(Record));
-
-  if (compare(&record,&precord,fieldNo) < 0 ){
+   // printf("record = %d,%s\n",record.id,record.name);
+    if (compare(&record,&precord,fieldNo) < 0 ){
+     // printf("record.id (%d) < precord.id (%d)\n",record.id,precord.id );
       if(pIndex != i){
+          
           memset(temp,0,sizeof(Record));
           memcpy(temp,record_data,sizeof(Record));
 
           pIndexData = getRecord(tempDesc,pIndex);
+          Record pIndex_rec;
+          memset(&pIndex_rec,0,sizeof(Record));
+          memcpy(&pIndex_rec,pIndexData,sizeof(Record));
+
+          //printf("switch %d,%s with %d,%s \n",record.id,record.name,pIndex_rec.id,pIndex_rec.name);
 
           memset(record_data,0,sizeof(Record));
           memcpy(record_data,pIndexData,sizeof(Record));
           
           memset(pIndexData,0,sizeof(Record));
           memcpy(pIndexData,temp,sizeof(Record));
-        
+         
       }
 
       pIndex=pIndex+1; 
@@ -522,13 +543,22 @@ int Partition(int bufferSize,int tempDesc,int start,int end,int fieldNo) {
   }
 
   pIndexData = getRecord(tempDesc,pIndex);
+  Record pIndex_rec;
+ // printf("switch pIndex : %d,%s with ",pIndex_rec.id,pIndex_rec.name );
+  memset(&pIndex_rec,0,sizeof(Record));
+  memcpy(&pIndex_rec,pIndexData,sizeof(Record));
 
 
   memset(temp2,0,sizeof(Record));
   memcpy(temp2,pIndexData,sizeof(Record));
 
   endData = getRecord(tempDesc,end);
-  
+
+  Record end_rec;
+  memset(&end_rec,0,sizeof(Record));
+  memcpy(&end_rec,endData,sizeof(Record));
+//  printf(" endData: %d,%s\n",end_rec.id,end_rec.name);
+
   memset(pIndexData,0,sizeof(Record));
   memcpy(pIndexData,endData,sizeof(Record));
 
@@ -678,9 +708,6 @@ SR_ErrorCode SR_SortedFile(
 
 
   //quicksort
-  int end;
-  end = bufferSize*(BF_BLOCK_SIZE/sizeof(Record));
-
   int last_rec_id = 0;
   int last_bl_rec=0;//# of records that the last block in buffer contains
 
@@ -703,12 +730,13 @@ SR_ErrorCode SR_SortedFile(
   
     }
 
-    last_rec_id = (k-1)*(BF_BLOCK_SIZE/sizeof(Record))//n-1 blocks are full
-              + last_bl_rec//last records(last block may not be full)
-              - 1; //because indexing starts from 0
-
+    last_rec_id = (k-1)*((BF_BLOCK_SIZE-sizeof(int))/sizeof(Record))-k //n-1 blocks are full
+              + last_bl_rec;//last records(last block may not be full)
+    //printf("%ld\n",(BF_BLOCK_SIZE-sizeof(int))/sizeof(Record) );
+    //printf("last_rec_id = %ld + %d \n", (k-1)*((BF_BLOCK_SIZE-sizeof(int))/sizeof(Record))-k,last_bl_rec);
     QuickSort(bufferSize,tempDesc,0,last_rec_id,fieldNo);
     writeBuffer(bufferSize,tempDesc,outputDesc);
+    //printBuffer(bufferSize,tempDesc);
 
   
     i+=1;
@@ -724,7 +752,7 @@ SR_ErrorCode SR_SortedFile(
 
   //int p = [logk-1(m)];
   //if(steps - p > 0)p++;
-  i = 1;
+  /*i = 1;
   j = m;
   int q;
   int n;//counter
@@ -732,7 +760,7 @@ SR_ErrorCode SR_SortedFile(
     n = 1;
     q = j/(bufferSize-1);      
     if(j%(bufferSize-1) > 0)q++;
-    printf("repeat %d times\n",q );
+    //printf("repeat %d times\n",q );
     while( n <= 1){
       getNextBlocks(n,bufferSize-1,outputDesc,tempDesc);
       Merge(bufferSize,tempDesc,outputDesc,fieldNo);
@@ -741,6 +769,7 @@ SR_ErrorCode SR_SortedFile(
     j = q;
     i+=1;
   }
+  */
 
   
 
@@ -796,7 +825,7 @@ SR_ErrorCode Merge(int bufferSize, int tempDesc,int outputDesc,int fieldNo){
 
     memcpy(&recordA,data[0],sizeof(Record));
     memcpy(&recordB,data[1],sizeof(Record));
-    if(compare(&recordA,&recordB,0) < 0 ){
+    if(compare(&recordA,&recordB,1) < 0 ){
       if(output_capacity < sizeof(Record)){
         printf("\nOutput to be flushed!!\n");
         printBuffer(bufferSize,tempDesc);
@@ -833,10 +862,10 @@ SR_ErrorCode Merge(int bufferSize, int tempDesc,int outputDesc,int fieldNo){
     }
   }
 
-
+  int x;
   if(i >= NumRecs[0] && j < NumRecs[1]){
     Record recordB;
-    for(j = 0 ; j <  NumRecs[1] ; j++){
+    for(x = j ; x <  NumRecs[1] ; x++){
 
       memset(&recordB,0,sizeof(Record));
       memcpy(&recordB,data[1],sizeof(Record));
@@ -858,9 +887,10 @@ SR_ErrorCode Merge(int bufferSize, int tempDesc,int outputDesc,int fieldNo){
       output_capacity -= sizeof(Record);
     }
   }
+
   else if(j >= NumRecs[1] && i < NumRecs[0]){
     Record recordA;
-    for(j = 0 ; j <  NumRecs[0] ; j++){
+    for(x = i ; x <  NumRecs[0] ; x++){
       memset(&recordA,0,sizeof(Record));
       memcpy(&recordA,data[0],sizeof(Record));
 
