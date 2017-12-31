@@ -17,19 +17,17 @@ typedef struct Record {
 } Record;
 
 
-
-
+SR_ErrorCode writeOutput(int bufferSize,int tempDesc,int outputDesc);
+SR_ErrorCode getNextGroup(int step_num,int bufferSize,int group_num,int offset,int fileDesc,int tempDesc);
 SR_ErrorCode Merge(int bufferSize, int tempDesc,int outputDesc, int fieldNo);
 SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,int tempDesc);
 SR_ErrorCode writeBuffer(int bufferSize,int tempDesc,int OutputDesc);
 SR_ErrorCode printBuffer(int bufferSize,int tempDesc);
 
+void QuickSort(int bufferSize,int tempDesc,int start,int end,int fieldNo);
 int Partition(int bufferSize,int tempDesc,int start,int end,int fieldNo) ;
-
 char* getRecord(int fileDesc,int record_num);
 
-
-void QuickSort(int bufferSize,int tempDesc,int start,int end,int fieldNo);
 
 /*
  * Η συνάρτηση SR_Init χρησιμοποιείται για την αρχικοποίηση του sort_file.
