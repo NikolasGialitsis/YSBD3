@@ -18,7 +18,7 @@ typedef struct Record {
 
 
 SR_ErrorCode writeOutput(int bufferSize,int tempDesc,int outputDesc);
-SR_ErrorCode getNextGroup(int step_num,int bufferSize,int group_num,int offset,int fileDesc,int tempDesc);
+SR_ErrorCode getNextGroup(int step_num,int bufferSize,int group_num,int block_num,int offset,int fileDesc,int tempDesc);
 SR_ErrorCode Merge(int bufferSize, int tempDesc,int outputDesc, int fieldNo);
 SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,int tempDesc);
 SR_ErrorCode writeBuffer(int bufferSize,int tempDesc,int OutputDesc);

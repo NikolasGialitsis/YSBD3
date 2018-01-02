@@ -315,7 +315,6 @@ SR_ErrorCode writeBuffer(int bufferSize,int tempDesc,int outputDesc){
     int j = 0;
 
     char* charbuf = data + sizeof(int);
-    //printf("record_num  to write :%d (EPREPE NA EINAI 17)\n",record_num);
     for(j = 0 ; j < record_num; j++){ //read each record in block 
       Record record;
       memset(&record,0,sizeof(Record));
@@ -326,6 +325,7 @@ SR_ErrorCode writeBuffer(int bufferSize,int tempDesc,int outputDesc){
     }
     //printf("\n");
   }
+
   BF_Block_Destroy(&block);
   return SR_OK;
 }
@@ -392,11 +392,11 @@ SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,int tempDesc
 }
 
 
-SR_ErrorCode getNextGroup(int step_num,int bufferSize,int group_num,int offset,int fileDesc,int tempDesc){
+SR_ErrorCode getNextGroup(int step_num,int bufferSize,int group_num,int block_num,int offset,int fileDesc,int tempDesc){
 
   int start_block;
-  start_block = ((step_num-1)*bufferSize)+1;
-
+  //start_block = ((step_num-1)*(bufferSize+1))+1;
+  start_block=  step_num;
   BF_Block* source_block;
   BF_Block_Init(&source_block);
 
@@ -405,40 +405,40 @@ SR_ErrorCode getNextGroup(int step_num,int bufferSize,int group_num,int offset,i
   int i;
   char* source;
   char* dest;
-  int block_num;
-  CALL_OR_DIE(BF_GetBlockCounter(fileDesc,&block_num));
-  block_num-=1;
+
+
 
   int record_num=0;
   int buffer_pos = 0;
   int j;
   int next = 0;
-
+  printf("getNextGroup :\n\n");
 
   for( i = 0 ; i < bufferSize ;i++){
 
-    if(i == 0) next += start_block+offset;
-
+    if(i == 0)next += start_block+offset;
+    
+    printf("next = %d\n",next );
     if(next > block_num){
       int k;
-      //printf("%d > %d\n",i,block_num );
+      printf("%d > %d\n",i,block_num );
       for(k = buffer_pos ; k < bufferSize ;k++){
         CALL_OR_DIE(BF_GetBlock(tempDesc,k,dest_block));
         dest = BF_Block_GetData(dest_block);
         memset(dest,0,BF_BLOCK_SIZE);
-        //printf("set Buffer[%d] -->0 \n",k);
         BF_Block_SetDirty(dest_block);
         CALL_OR_DIE(BF_UnpinBlock(dest_block));
       }
       break;
+   
     }
-
+    printf("\t\tgetblock %d\n",next);
     CALL_OR_DIE(BF_GetBlock(fileDesc,next,source_block));
     next += group_num;
     source = BF_Block_GetData(source_block);
     record_num = 0;
     memcpy(&record_num,source,sizeof(int));
-   // printf("record_num = %d\n",record_num );
+    printf("record_num = %d\n",record_num );
     CALL_OR_DIE(BF_GetBlock(tempDesc,buffer_pos,dest_block));
     dest = BF_Block_GetData(dest_block);
     memset(dest,0,BF_BLOCK_SIZE);
@@ -783,18 +783,34 @@ SR_ErrorCode SR_SortedFile(
   access("tempOut",F_OK);
   if(errno == ENOENT){
     CALL_OR_DIE(SR_CreateFile("tempOut"));
-
   }
   else if(errno!=0){
-
-    fprintf(stderr, "Error accessing tempOut file (errno = %d)\n",errno);
+    fprintf(stderr, "Error accessing \"tempOut\" file\n");
   }
+  else {
+    pid_t pid = fork();
+    if(pid < 0){
+      fprintf(stderr, "Fork error\n" );
+      exit(-1);
+    }
+    else if(pid == 0){
+      execlp("rm","rm","tempOut",(void*)NULL);
+      printf("Unexpected return from exec: error rm\n");
+      exit(-1);
+    }
+    else{
+      while(wait(NULL) < 0);
+    }
+
+    CALL_OR_DIE(SR_CreateFile("tempOut"));
+  }
+
 
 
   CALL_OR_DIE(SR_OpenFile(input_filename,&inputDesc));
   CALL_OR_DIE(SR_OpenFile(output_filename,&outputDesc));
-  CALL_OR_DIE(SR_OpenFile(output_filename,&tempOut));
-
+  CALL_OR_DIE(SR_OpenFile("tempOut",&tempOut));
+  
   BF_Block* block;
   BF_Block_Init(&block);
 
@@ -840,23 +856,16 @@ SR_ErrorCode SR_SortedFile(
               + last_bl_rec
               -1; //last records(last block may not be full)
     QuickSort(bufferSize,tempDesc,0,last_rec_id,fieldNo);
+    
     writeBuffer(bufferSize,tempDesc,tempOut);
-  
+    
 
   
     i+=1;
 
   }
-
-
-
-  
   //Merging Phase
-
-
   //double steps = logk-1(m)]; 
-  
-
   //int p = [logk-1(m)];
   //if(steps - p > 0)p++;
   int offset = 0;
@@ -865,30 +874,60 @@ SR_ErrorCode SR_SortedFile(
   int q;
   int n;//counter
   int group_num = bufferSize;
-  printf("m = %d\n",m );
+  //printf("m = %d\n",m );
+  int reps;
+  SR_ErrorCode retval;
+  BF_GetBlockCounter(inputDesc,&block_num); 
+  //printf("reps = %d\n",reps );
+  reps = block_num/(bufferSize);
+  if((block_num % (bufferSize)) > 0 )reps++;
   while(i <= 1){      
     n = 1;
     q = j/(bufferSize-1);      
     if(j%(bufferSize-1) > 0)q++;
-    printf("\n\n>  %d \n",j );
-    printf("repeat %d times\n",q );
-    while( n <= m+q){
-      printf("n = %d\n\n",n);
+    //printf("\n\n>  %d \n",j );
+    //printf("repeat %d times\n",j ); 
+
+    while( n <=  block_num){
+    //printf("n = %d\n\n",n);
       for(offset = 0 ; offset < group_num ; offset++){
-        getNextGroup(n,bufferSize-1,group_num,offset,tempOut,tempDesc);
+
+        retval = getNextGroup(n,bufferSize-1,group_num,block_num-1,offset,tempOut,tempDesc);
+
+        //SR_PrintAllEntries(tempDesc);
+        //if(retval == SR_OK)
+        //printf("n = %d,offset = %d\n",n,offset );
+
         Merge(bufferSize,tempDesc,outputDesc,fieldNo);
         
-        printf("---------------------------------\n");
-        n+=1;
+        //printf("---------------------------------\n");
       }
-      
+
+      n+=(group_num*(bufferSize-1));
     }
-    group_num*=(bufferSize-1);
     
+    pid_t pid = fork();
+  
+    if(pid < 0){
+      fprintf(stderr, "Fork error\n" );
+      exit(-1);
+    }
+    else if(pid == 0){
+      execlp("cp","cp",output_filename,"tempOut",(void*)NULL);  
+      printf("Unexpected return from exec: error cp\n");
+      fflush(stdout);
+      exit(-1);
+    }
+    else{
+      while(wait(NULL) < 0);
+    }
+
+
+    group_num*=(bufferSize-1);
     j = q;
     i+=1;
   }
-  
+  //SR_PrintAllEntries(outputDesc);
   
   
 
@@ -897,6 +936,7 @@ SR_ErrorCode SR_SortedFile(
 
   BF_Block_Destroy(&block);
   SR_CloseFile(tempDesc);
+  SR_CloseFile(tempOut);
   SR_CloseFile(outputDesc);
   SR_CloseFile(inputDesc);
   return SR_OK;
@@ -910,6 +950,7 @@ SR_ErrorCode Merge(int bufferSize, int tempDesc,int outputDesc,int fieldNo){
   int i = 0;
   int j = 0;
 
+  //printf("----m -e -r -g -e ---\n\n");
   char** data = calloc(bufferSize-1,sizeof(char*));
   
   int NumRecs[bufferSize-1];
@@ -922,6 +963,7 @@ SR_ErrorCode Merge(int bufferSize, int tempDesc,int outputDesc,int fieldNo){
     CALL_OR_DIE(BF_GetBlock(tempDesc,i,block));
     data[i] = BF_Block_GetData(block);
     memcpy(NumRecs+i,data[i],sizeof(int));
+    //printf("NumRecs[%d] = %d\n",i,NumRecs[i] );
     data[i] += sizeof(int);
     Index[i] = 0; 
     CALL_OR_DIE(BF_UnpinBlock(block));
@@ -931,7 +973,7 @@ SR_ErrorCode Merge(int bufferSize, int tempDesc,int outputDesc,int fieldNo){
   memset(output,0,BF_BLOCK_SIZE);
 
   int bl_rec_capacity = (BF_BLOCK_SIZE-sizeof(int))/sizeof(Record);
-  int output_capacity = BF_BLOCK_SIZE;
+  int output_capacity = BF_BLOCK_SIZE - sizeof(int);
 
 
 
@@ -980,21 +1022,21 @@ SR_ErrorCode Merge(int bufferSize, int tempDesc,int outputDesc,int fieldNo){
           Record record;
           memset(&record,0,sizeof(Record));
           memcpy(&record,output,sizeof(Record));
-          printf("%d,%s,%s,%s\n",record.id,record.name,record.surname,record.city);
+         // printf("%d,%s,%s,%s\n",record.id,record.name,record.surname,record.city);
           SR_InsertEntry(outputDesc,record);
-          output += sizeof(Record);
+          output+=sizeof(Record);
+         
+          
         }
+
+
 
         output = BF_Block_GetData(block);
         memset(output,0,BF_BLOCK_SIZE);
-        output_capacity = BF_BLOCK_SIZE;
+        output_capacity = BF_BLOCK_SIZE-sizeof(int);
         output_recs = 0;
-
-
       }
       memcpy(output,&min,sizeof(Record));
-
-
       output+=sizeof(Record);
       output_recs++;
       data[min_index]+=sizeof(Record);
@@ -1003,13 +1045,12 @@ SR_ErrorCode Merge(int bufferSize, int tempDesc,int outputDesc,int fieldNo){
     }
   }
 
-
   output = BF_Block_GetData(block);
   for(j = 0 ; j <  output_recs; j++){ //read each record in block 
     Record record;
     memset(&record,0,sizeof(Record));
     memcpy(&record,output,sizeof(Record));
-    printf("%d,%s,%s,%s\n",record.id,record.name,record.surname,record.city);
+  //  printf("%d,%s,%s,%s\n",record.id,record.name,record.surname,record.city);
     SR_InsertEntry(outputDesc,record);
     output += sizeof(Record);
   }
@@ -1061,6 +1102,7 @@ SR_ErrorCode SR_PrintAllEntries(int fileDesc) {
     memcpy(&record_num,data,sizeof(int));//read block's number of records
     int j = 0;
     char* buffer = data + sizeof(int); 
+    //printf("Print:block %d : records = %d\n",i,record_num );
     for(j = 0 ; j < record_num; j++){ //read each record in block
       Record record;
       memset(&record,0,sizeof(Record));
