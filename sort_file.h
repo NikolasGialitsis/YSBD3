@@ -25,6 +25,8 @@ SR_ErrorCode Merge(
 	int tempOut,int outputDesc,int fieldNo,
 	int output_has_content,int* record_num
 );
+
+int compare(Record* currec ,Record* pivot,int fieldNo);
 SR_ErrorCode getNextBlocks(int step_num,int bufferSize,int fileDesc,int tempDesc);
 SR_ErrorCode writeBuffer(int bufferSize,int tempDesc,int OutputDesc);
 SR_ErrorCode printBuffer(int bufferSize,int tempDesc);
