@@ -221,6 +221,9 @@ SR_ErrorCode Merge(
     output += sizeof(Record);
   }
 
+
+
+  exit(0);
   BF_Block_SetDirty(block);
   CALL_OR_DIE(BF_UnpinBlock(block));
   BF_Block_Destroy(&block);
