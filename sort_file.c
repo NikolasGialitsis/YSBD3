@@ -7,8 +7,7 @@
 #include <unistd.h>
 #include <wait.h>
 #include <errno.h>
-
-
+int pinned = 0;
 
 
 #define CALL_OR_DIE(call)     \
@@ -80,7 +79,8 @@ SR_ErrorCode SR_Init() {
 //A Function that is called by HP_InsertEntry to avoid memory leaks
 SR_ErrorCode SR_InsertData(char* data,Record record){
     memset(data,0,sizeof(int));
-    memcpy(data, &record.id,sizeof(record.id));
+    
+    memcpy(data, &record.id,sizeof(int));
     data += sizeof(int);
 
     memset(data,0,15*sizeof(char));
@@ -187,17 +187,17 @@ SR_ErrorCode SR_CloseFile(int fileDesc) {
  */
 SR_ErrorCode SR_InsertEntry(int fileDesc, Record record) {
   // Your code goes here
-  BF_Block* block = NULL;
+  
   char* data = NULL;
   int block_num = 0;
-
+  BF_Block* block = NULL;
+  BF_Block_Init(&block);
   //get number of blocks in cache
 
   CALL_OR_DIE(BF_GetBlockCounter(fileDesc,&block_num));
   if(block_num == 1 ){
     //create first block
-      
-    BF_Block_Init(&block);
+
     CALL_OR_DIE(BF_AllocateBlock(fileDesc,block));
     
     data = BF_Block_GetData(block);
@@ -208,47 +208,42 @@ SR_ErrorCode SR_InsertEntry(int fileDesc, Record record) {
     data += sizeof(int);
 
     SR_InsertData(data,record);
+
   }
   else{
 
 
     block_num--;
-    BF_Block_Init(&block);
     CALL_OR_DIE(BF_GetBlock(fileDesc,block_num,block));
   
     
     data = BF_Block_GetData(block);
-    
+    CALL_OR_DIE(BF_UnpinBlock(block));
+
     int record_num = 0;
     memcpy(&record_num,data,sizeof(int));
 
     
     //if (existing blocks can not store another record )
-    if(((record_num+1)*sizeof(Record) + sizeof(int)) > BF_BLOCK_SIZE){
-      
+    if((((record_num+1)*sizeof(Record)) + sizeof(int)) > BF_BLOCK_SIZE){
       //Unpin previous block
-      CALL_OR_DIE(BF_UnpinBlock(block));
-      BF_Block_Destroy(&block);
+
 
       //Allocate a new block
-
-      BF_Block_Init(&block);
       CALL_OR_DIE(BF_AllocateBlock(fileDesc,block));
       data = BF_Block_GetData(block);
       memset(data,0,BF_BLOCK_SIZE);
-      int one = 1;
-  
+      int one = 1; 
       memcpy(data,&one,sizeof(int));//number of records in block is now one
       data += sizeof(int);
       SR_InsertData(data,record);
-    
       block_num--;
      
     } 
     else{//There is room to store a record within the existing blocks
       int new_rec = ++record_num;//increase block's records by one
       memcpy(data,&new_rec,sizeof(int));
-      data += sizeof(int) + (new_rec-1)*sizeof(Record);
+      data += (sizeof(int) + ((new_rec-1)*sizeof(Record)));
       SR_InsertData(data,record);
       
     } 
@@ -257,6 +252,7 @@ SR_ErrorCode SR_InsertEntry(int fileDesc, Record record) {
   BF_Block_SetDirty(block);
   CALL_OR_DIE(BF_UnpinBlock(block));
   BF_Block_Destroy(&block);
+
   return SR_OK;
 }
 
@@ -784,11 +780,11 @@ SR_ErrorCode SR_SortedFile(
   int steps = 4;
   while(i <= 1){      
     n = 1;
-   // q = j/(bufferSize-1);      
-   // if(j%(bufferSize-1) > 0)q++;
+    q = j/(bufferSize-1);      
+    if(j%(bufferSize-1) > 0)q++;
     printf("group_num %d\n",group_num  );
     record_num = 0;
-    while( n <=  1){
+    while( n <= 1){
       //for(offset = 0 ; offset < group_num ; offset++){
       retval = getNextGroup(n,bufferSize-1,group_num,block_num-1,offset,tempOut,tempDesc);
       Merge(n,group_num,bufferSize,tempDesc,tempOut,outputDesc,fieldNo,output_has_content,&record_num);
@@ -799,7 +795,7 @@ SR_ErrorCode SR_SortedFile(
     output_has_content = 1;
     
     group_num*=(bufferSize-1);
-    CopyContent(outputDesc,tempOut);
+    //CopyContent(outputDesc,tempOut);
 
    // j = q;
     i+=1;
