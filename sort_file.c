@@ -771,40 +771,58 @@ SR_ErrorCode SR_SortedFile(
   int reps;
   SR_ErrorCode retval;
   BF_GetBlockCounter(inputDesc,&block_num); 
-  reps = block_num/(bufferSize);
   pid_t pid = -1;
   int output_has_content = 0;
-  if((block_num % (bufferSize)) > 0 )reps++;
-
   int record_num = 0;
-  int steps = 4;
-  while(i <= 1){      
-    n = 1;
-    q = j/(bufferSize-1);      
-    if(j%(bufferSize-1) > 0)q++;
-    printf("group_num %d\n",group_num  );
-    record_num = 0;
-    while( n <= 1){
-      //for(offset = 0 ; offset < group_num ; offset++){
-      retval = getNextGroup(n,bufferSize-1,group_num,block_num-1,offset,tempOut,tempDesc);
-      Merge(n,group_num,bufferSize,tempDesc,tempOut,outputDesc,fieldNo,output_has_content,&record_num);
-      n++;
-    }
-      
-      //n+=(group_num*(bufferSize-1));
-    output_has_content = 1;
-    
-    group_num*=(bufferSize-1);
-    //CopyContent(outputDesc,tempOut);
+  printf("m = %d\n",m );
 
-   // j = q;
-    i+=1;
+  int steps = 0;
+  int temp;
+  
+  while(m/bufferSize > 0){
+    steps++;  
+    printf("m= %d\n",m );
+    int temp = m/bufferSize;
+
+    m = m/bufferSize;
+    if(temp % bufferSize  > 0 )m++;  
+    printf("\tm = %d\n",m );
   }
-  //SR_PrintAllEntries(outputDesc);
-  
-  
+  if(m%bufferSize > 0)steps++;  
+
+  printf("steps = %d\n",steps );
 
   
+
+  while(i <= steps){      
+    n = 1;
+    q = j/(bufferSize);      
+    if(j%bufferSize > 0)q++;
+    record_num = 0;
+    printf("q = %d\n",q );
+    while( n <=  q){
+      getNextGroup(n,bufferSize-1,group_num,block_num-1,tempOut,tempDesc);
+      printBuffer(bufferSize-1,tempDesc);
+      //printBuffer(bufferSize-1,tempDesc);
+      
+      Merge(n,group_num,bufferSize,tempDesc,tempOut,outputDesc,fieldNo,output_has_content,&record_num);
+      printf("\n\n");
+      
+      n++;
+
+    }
+    output_has_content = 1;   
+    group_num*=(bufferSize-1);
+    if(i != steps)CopyContent(outputDesc,tempOut);
+  //  SR_PrintAllEntries(tempOut);
+    //exit(0);
+    j = q;
+    i+=1;
+
+  }
+  
+  SR_PrintAllEntries(outputDesc);
+
 
 
   BF_Block_Destroy(&block);
