@@ -16,10 +16,13 @@ typedef struct Record {
 	char city[20];
 } Record;
 
-char* MoveGroupIndex(int step_num,int group_id,int group_num,int block_num,int offset,int fileDesc);
+
+extern int pinned;
+
+char* MoveGroupIndex(int step_num,int bufferSize,int group_id,int group_num,int block_num,int offset,int fileDesc);
 SR_ErrorCode CopyContent(int outputDesc,int tempOut);
 SR_ErrorCode InsertOutput(int fileDesc,int* record_num,Record* record);
-SR_ErrorCode getNextGroup(int step_num,int bufferSize,int group_num,int block_num,int offset,int fileDesc,int tempDesc);
+SR_ErrorCode getNextGroup(int step_num,int bufferSize,int group_num,int block_num,int fileDesc,int tempDesc);
 SR_ErrorCode Merge(
 	int step_num,int group_num,int bufferSize,int tempDesc,
 	int tempOut,int outputDesc,int fieldNo,
@@ -35,7 +38,7 @@ SR_ErrorCode clear(int fileDesc);
 void QuickSort(int bufferSize,int tempDesc,int start,int end,int fieldNo);
 int Partition(int bufferSize,int tempDesc,int start,int end,int fieldNo) ;
 char* getRecord(int fileDesc,int record_num);
-
+SR_ErrorCode SR_InsertData(char* data,Record record);
 
 /*
  * Η συνάρτηση SR_Init χρησιμοποιείται για την αρχικοποίηση του sort_file.

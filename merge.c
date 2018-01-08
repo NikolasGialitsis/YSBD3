@@ -22,7 +22,7 @@ SR_ErrorCode Merge(
   int fieldNo,int output_has_content,int* record_num)
 {
   //printf("Merge!\n");
-  printf("*record_num = %d\n",*record_num );
+  //printf("*record_num = %d\n",*record_num );
 
   BF_Block* block;
   BF_Block_Init(&block);
@@ -393,8 +393,10 @@ SR_ErrorCode InsertOutput(int fileDesc,int* record_num,Record* record){
   data = BF_Block_GetData(block);
   int numrecs = 0;
   memcpy(&numrecs,data,sizeof(int));
-  numrecs++;
-  memcpy(data,&numrecs,sizeof(int));
+  if(numrecs < bl_rec_capacity){
+    numrecs++;
+    memcpy(data,&numrecs,sizeof(int));
+  }
   data+=sizeof(int);
   offset = (*record_num)%(bl_rec_capacity)  ;
   data+=(offset*sizeof(Record));

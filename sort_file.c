@@ -779,32 +779,33 @@ SR_ErrorCode SR_SortedFile(
   int steps = 0;
   int temp;
   
-  while(m/bufferSize > 0){
+  while(m/(bufferSize-1) > 1){
     steps++;  
     printf("m= %d\n",m );
-    int temp = m/bufferSize;
+    int temp = m/(bufferSize-1);
 
-    m = m/bufferSize;
-    if(temp % bufferSize  > 0 )m++;  
+    m = m/(bufferSize-1);
+    if(temp % (bufferSize-1)  > 0 )m++;  
     printf("\tm = %d\n",m );
   }
-  if(m%bufferSize > 0)steps++;  
+  steps++; 
 
   printf("steps = %d\n",steps );
 
-  
+
 
   while(i <= steps){      
+    printf("group_num = %d\n",group_num );
     n = 1;
-    q = j/(bufferSize);      
-    if(j%bufferSize > 0)q++;
+    q = j/(bufferSize-1);      
+    if(j%(bufferSize-1) > 0)q++;
     record_num = 0;
-    printf("q = %d\n",q );
+    printf("\n\n\nq = %d\n",q ); 
     while( n <=  q){
       getNextGroup(n,bufferSize-1,group_num,block_num-1,tempOut,tempDesc);
-      printBuffer(bufferSize-1,tempDesc);
-      //printBuffer(bufferSize-1,tempDesc);
       
+      //printBuffer(bufferSize-1,tempDesc);
+      //printBuffer(bufferSize-1,tempDesc);  
       Merge(n,group_num,bufferSize,tempDesc,tempOut,outputDesc,fieldNo,output_has_content,&record_num);
       printf("\n\n");
       
@@ -812,16 +813,18 @@ SR_ErrorCode SR_SortedFile(
 
     }
     output_has_content = 1;   
+    if(group_num > block_num)break;
     group_num*=(bufferSize-1);
-    if(i != steps)CopyContent(outputDesc,tempOut);
-  //  SR_PrintAllEntries(tempOut);
+
+    CopyContent(outputDesc,tempOut);
     //exit(0);
+     // SR_PrintAllEntries(tempOut)
     j = q;
     i+=1;
 
   }
-  
-  SR_PrintAllEntries(outputDesc);
+
+//  SR_PrintAllEntries(outputDesc);
 
 
 
